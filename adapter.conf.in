@@ -1,0 +1,39 @@
+add_header Cache-Control "private, no-store" always;
+location /__shelley_inject/preview/ {
+    if ($inject_allowed = 0) { return 403; }
+    client_max_body_size 512k;
+    proxy_pass http://127.0.0.1:@API_PORT@;
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+}
+location = /__shelley_inject/inject.js {
+    if ($inject_allowed = 0) { return 403; }
+    alias @ROOT@/assets/inject.js;
+    add_header Cache-Control "private, no-store" always;
+}
+location /__shelley_inject/ { return 404; }
+location = /demo { return 302 /demo/; }
+location = /demo/ {
+    proxy_pass http://127.0.0.1:@SITE_PORT@/;
+    proxy_set_header Accept-Encoding "";
+    proxy_hide_header Cache-Control;
+    proxy_hide_header ETag;
+    proxy_hide_header Last-Modified;
+    proxy_set_header If-None-Match "";
+    proxy_set_header If-Modified-Since "";
+    sub_filter '</body>' '$inject_script</body>';
+    sub_filter_once on;
+}
+location / {
+    client_max_body_size 25m;
+    if ($inject_allowed = 0) { return 403; }
+    proxy_pass http://127.0.0.1:@SHELLEY_PORT@;
+    proxy_http_version 1.1;
+    proxy_set_header X-ExeDev-UserID @USER_ID@;
+    proxy_set_header X-ExeDev-Email @EMAIL@;
+    proxy_set_header Host $host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+}
