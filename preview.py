@@ -33,7 +33,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         url = urlsplit(self.path)
-        page = parse_qs(url.query).get("page", ["/demo/"])[0]
+        page = parse_qs(url.query).get("page", ["/"])[0]
         if url.path.endswith("/state"):
             with lock:
                 self.json(pages.setdefault(page, empty()))
@@ -84,7 +84,7 @@ class Handler(BaseHTTPRequestHandler):
                 body = {}
             else:
                 raise ValueError("HTML edits require a JSON body")
-            page = body.get("page", parse_qs(url.query).get("page", ["/demo/"])[0])
+            page = body.get("page", parse_qs(url.query).get("page", ["/"])[0])
             if not isinstance(page, str) or not page.startswith("/"):
                 raise ValueError("page must be a URL pathname")
             if action == "css" and not isinstance(body.get("css"), str):

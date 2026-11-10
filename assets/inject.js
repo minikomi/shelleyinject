@@ -1,7 +1,8 @@
 (() => {
   if (document.getElementById('shelley-inject-root')) return;
-  const {cwd, previewBase} = document.currentScript.dataset;
-  if (!cwd || !previewBase) throw new Error('Shelley Inject requires data-cwd and data-preview-base.');
+  const {cwd, previewBase, shelleyUrl} = document.currentScript.dataset;
+  if (!cwd || !previewBase || !shelleyUrl) throw new Error('Shelley Inject requires data-cwd, data-preview-base and data-shelley-url.');
+  const api = '/__shelley_inject/shelley-api';
   const host = document.createElement('div');
   host.id = 'shelley-inject-root';
   document.body.append(host);
@@ -42,7 +43,7 @@
     activityPending = true;
     const path = chatPath;
     try {
-      const response = await fetch('/api/conversation-by-slug/' + encodeURIComponent(path.slice(3)));
+      const response = await fetch(api + '/conversation-by-slug/' + encodeURIComponent(path.slice(3)));
       if (path !== chatPath) return;
       if (!response.ok) { setActivity('Shelley · unavailable', false, true); return; }
       const conversation = await response.json();
@@ -64,7 +65,7 @@
     if (!path?.startsWith('/c/')) return;
     chatPath = path;
     localStorage.setItem(chatKey, path);
-    $('#separate').href = path;
+    $('#separate').href = shelleyUrl + path;
     updateActivity();
   }
   async function ensureChat(fresh = false) {
@@ -75,16 +76,16 @@
     creatingChat = (async () => {
       try {
         if (chatPath && !fresh) {
-          const saved = await fetch('/api/conversation-by-slug/' + encodeURIComponent(chatPath.slice(3)));
+          const saved = await fetch(api + '/conversation-by-slug/' + encodeURIComponent(chatPath.slice(3)));
           if (saved.ok) {
-            frame.src = chatPath;
-            $('#separate').href = chatPath;
+            frame.src = shelleyUrl + chatPath;
+            $('#separate').href = shelleyUrl + chatPath;
             $('.status').textContent = 'Continuing this page’s chat';
             return;
           }
           if (saved.status !== 404) throw new Error('Could not reopen the page chat.');
         }
-        const response = await fetch('/api/conversations/draft', {
+        const response = await fetch(api + '/conversations/draft', {
           method: 'POST',
           headers: {'Content-Type': 'application/json', 'X-Shelley-Request': '1'},
           body: JSON.stringify({draft: '', cwd})
@@ -93,7 +94,7 @@
         const conversation = await response.json();
         if (!conversation.conversation_id) throw new Error('Missing conversation ID.');
         saveChat('/c/' + encodeURIComponent(conversation.conversation_id));
-        frame.src = chatPath;
+        frame.src = shelleyUrl + chatPath;
         $('.status').textContent = 'Fresh chat · saved for this page';
       } catch (error) {
         $('.status').textContent = error.message;
@@ -185,22 +186,18 @@
     try {
       if (await ensureChat() === false) throw new Error($('.status').textContent);
       if (!chatPath) throw new Error('Could not create a page chat. Try New chat.');
-      const targetResponse = await fetch('/api/conversation-by-slug/' + encodeURIComponent(chatPath.slice(3)));
+      const targetResponse = await fetch(api + '/conversation-by-slug/' + encodeURIComponent(chatPath.slice(3)));
       if (!targetResponse.ok) throw new Error('Could not reopen your page chat: ' + (await targetResponse.text()).slice(0, 160));
       const target = await targetResponse.json();
-      const chatDocument = frame.contentDocument;
-      const input = chatDocument?.querySelector('textarea[data-testid="message-input"]');
-      const active = chatDocument?.URL ? new URL(chatDocument.URL).pathname : '';
-      const isTarget = active === '/c/' + target.conversation_id || (target.slug && active === '/c/' + target.slug);
-      if ((target.is_draft && target.draft?.trim()) || (isTarget && input?.value.trim())) {
-        throw new Error('Your chat has an unsent draft. Send or clear it first.');
+      if (target.is_draft && target.draft?.trim()) {
+        throw new Error('Your chat has a saved draft. Send or clear it first.');
       }
       if (capture) {
         if (capture.discarded) return;
         if (!capture.path) {
           const extension = capture.clip.type.includes('mp4') ? 'mp4' : 'webm';
           const filename = 'inject-voice-' + Date.now() + '.' + extension;
-          const upload = await fetch('/api/upload/raw?filename=' + encodeURIComponent(filename), {
+          const upload = await fetch(api + '/upload/raw?filename=' + encodeURIComponent(filename), {
             method: 'POST', headers: {'Content-Type': capture.clip.type || 'application/octet-stream'}, body: capture.clip
           });
           if (!upload.ok) throw new Error('Audio upload failed: ' + (await upload.text()).slice(0, 160));
@@ -215,11 +212,10 @@
       }};
       let text = comment + '\n\nSelected page context (Shelley Inject):\n```json\n' + JSON.stringify(payload,null,2) + '\n```\n';
       if (capture) text = '/transcription ' + capture.path + '\n' + text.trim();
-      const submission = await fetch('/api/conversation/' + encodeURIComponent(target.conversation_id) + '/chat', {
+      const submission = await fetch(api + '/conversation/' + encodeURIComponent(target.conversation_id) + '/chat', {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({message: text})
       });
       if (!submission.ok) throw new Error('Shelley could not accept the comment: ' + (await submission.text()).slice(0, 240));
-      if (!isTarget || !input) frame.src = '/c/' + encodeURIComponent(target.conversation_id);
       discardVoice();
       $('.comment-popup').hidden = true;
       $('#comment').value = '';
@@ -277,10 +273,6 @@
     if (voice) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       $('.comment-error').textContent = 'Microphone recording requires a supported browser over HTTPS.';
-      return;
-    }
-    if (frame.contentDocument?.defaultView?.__SHELLEY_INIT__?.transcription_available === false) {
-      $('.comment-error').textContent = 'Shelley has no transcription route configured.';
       return;
     }
     const capture = {chunks: [], discarded: false, sendOnStop: false};
