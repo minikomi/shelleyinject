@@ -1,5 +1,8 @@
 # Shelley Inject
 
+https://github.com/user-attachments/assets/2d73af7a-387f-495c-988b-5c1ea4cec147
+
+
 Point at a page served by Nginx and tell [Shelley](https://github.com/boldsoftware/shelley) what to change.
 
 An experimental Nginx-injected toolbar for selecting elements, sending text or
